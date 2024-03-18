@@ -38,6 +38,7 @@ make download_database
 ## Dataset
 
 Please set DATASET_DIR variable in Makefile to directory your dataset is containing.
+This implementation use PascalVOC as default dataset.
 The following structure is assumed.
 
 ```sh
