@@ -1,5 +1,0 @@
-_target_: src.models.components.vocabularies.RetrievalVocabulary
-
-database_name: "ViT-L-14_PMD_TOP5"
-databases_dict_fp: "artifacts/models/retrieval/databases.json"
-num_samples: 10

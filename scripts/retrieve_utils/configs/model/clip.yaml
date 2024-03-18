@@ -1,4 +1,0 @@
-_target_: src.models.CLIP
-
-model_name: "ViT-L-14"
-prompt: "a photo of a {}"
