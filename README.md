@@ -1,5 +1,6 @@
 # TAG: Guidance-free Open-Vocabulary Semantic Segmentation
-This repo is the official implementation of "TAG: Guidance-free Open-Vocabulary Semantic Segmentation".
+This repo is the official implementation of
+["TAG: Guidance-free Open-Vocabulary Semantic Segmentation"](https://arxiv.org/abs/2403.11197).
 
 TAG is a novel approach to open-vocabulary semantic segmentation that operates without the need for
 training, annotation, or user guidance. It leverages pre-trained models like CLIP and DINO to
