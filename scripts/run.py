@@ -61,7 +61,7 @@ for idx, (images, targets) in tqdm(enumerate(val_dataloader, 0)):
     cc.regist(targets)
 
     with torch.no_grad():
-        seg_logits, class_names, dino_logits = tag_model.batched_forward_cased(images, use_crf=use_crf)
+        seg_logits, class_names, dino_logits = tag_model.batched_forward_tag(images, use_crf=use_crf)
         semseg_metrics.update(ca(dino_logits, class_names, threshold), targets)
     
     if not no_log:

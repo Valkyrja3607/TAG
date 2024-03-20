@@ -161,12 +161,7 @@ class TAGWrapper(nn.Module):
 
         return img_txt_matching
     
-        # unflatten
-        img_txt_matching = torch.tensor_split(img_txt_matching, cumm_idx[:-1], dim=1)
-        img_txt_matching = [itm[i] for i, itm in enumerate(img_txt_matching)]
-        return img_txt_matching
-    
-    def batched_forward_cased(self, image: torch.Tensor, normalize: bool = True, return_ori: bool =False, use_crf: bool = False):
+    def batched_forward_tag(self, image: torch.Tensor, normalize: bool = True, return_ori: bool =False, use_crf: bool = False):
         """
         :param image: torch.Tensor [B, 3, H, W]
         :param text: list[list[]]
@@ -174,84 +169,28 @@ class TAGWrapper(nn.Module):
         :param return_ori: bool - if True uses the features from the original visual encoder
         """
         B, _, W, H = image.shape
-
-        # Image
-        # torch.Size([4, 785, 512]) torch.Size([4, 785, 512])
         feat_gem, feat_ori = self.model.visual(image)
         image_feat = feat_ori if return_ori else feat_gem
-        # image_feat_l = self.model.visual(F.interpolate(image, size=(336, 336), mode='bilinear'))[0]
-        # image_feat_l = rearrange(image_feat_l[:, 1:], 'b (w h) c -> b c w h', w=336 // self.patch_size, h=336 // self.patch_size)
-        # image_feat_l = F.interpolate(image_feat_l, size=(W//self.patch_size, H//self.patch_size), mode='bilinear')
-        # image_feat_l = torch.cat([image_feat[:, 0:1, :], rearrange(image_feat_l, 'b c w h -> b (w h) c')], dim=1)
-        # image_feat = (image_feat + image_feat_l) / 2
-        
-        # image_feat = F.normalize(image_feat, dim=-1)  # [B, N, dim]
+
         dim = image_feat.shape[-1]
-        # result = self.k_means(image_feat[:, 1:, :])
-        # # torch.Size([8, 257])
-        # # torch.Size([8, 10, 768])
-        # images_label = result.labels
-        # images_z = result.centers
-        # images_z = images_z.reshape(-1, dim)
-        
+
         dino_logits = dino_kmeans(image, self.k_means)
-        # torch.Size([8, 15, 768]), torch.Size([8, 768, 448, 448])
         if use_crf:
             dino_logits = batched_crf(image, dino_logits).cuda()
         images_z, clip_features = extract_clip_features(image_feat, dino_logits)
         images_z = images_z.reshape(-1, dim)
         
         images_vocab = self.vocabulary(images_z=images_z)
-        # print(images_vocab)
-        # images_vocab = self.cased.batch_step(images_z, images_vocab, True)
         images_p, words, images_vocab = self.cased.batch_step(images_z, images_vocab)
         text = [list(set(sum(images_vocab[batch*self.n_clusters: (batch+1)*self.n_clusters], []))) for batch in range(B)]
-        # street_map = torch.tensor([i=="street" for i in words])
-        # images_p[:, street_map] = 0
+
         images_vocab = [words[i] for i in images_p.argmax(dim=1)]
         images_vocab = [images_vocab[batch*self.n_clusters: (batch+1)*self.n_clusters] for batch in range(B)]
-        # images_vocab = [[vocab[0] for vocab in images_vocab[batch*self.n_clusters: (batch+1)*self.n_clusters]] for batch in range(B)]
-        # print(images_vocab)
+
         clip_logits = torch.einsum("bnf,bfhw->bnhw", images_z.reshape(B, -1, dim), clip_features)
         return clip_logits, images_vocab, dino_logits
-
-        L = len(text)
-        if isinstance(text[0], list):
-            cumm_idx = np.cumsum([len(t) for t in text]).tolist()
-        elif isinstance(text[0], str):
-            text = [text for i in range(B)]
-            cumm_idx = np.cumsum([len(t) for t in text]).tolist()
-
-        # Text
-        # torch.Size([1, 108, 512])
-        # Text
-        if self.text_embeddings is None:
-            flatten_text = [t for sub_text in text for t in sub_text]
-            text_embeddings = self.encode_text(flatten_text)  # [B, num_prompt, dim]
-        else:
-            _, num_prompt, dim = self.text_embeddings.shape
-            text_embeddings = self.text_embeddings.expand(B, num_prompt, dim)
-
-        # Image-Text matching
-        # torch.Size([4, 784, 108])
-        img_txt_matching = 100 * image_feat[:, 1:] @ text_embeddings.transpose(-1, -2)  # [B, N, num_prompt]
-        # torch.Size([4, 108, 28, 28])
-        img_txt_matching = rearrange(img_txt_matching, 'b (w h) c -> b c w h',
-                                     w=W // self.patch_size, h=H // self.patch_size)  # [B, num_prompt, w, h]
-
-        # Interpolate
-        img_txt_matching = F.interpolate(img_txt_matching, size=(W, H), mode='bilinear')  # [B,num_prompt, W, H]
-
-        # Heat Maps
-        if normalize:
-            img_txt_matching = self.min_max(img_txt_matching)  # [B,num_prompt, W, H]
-
-        # unflatten
-        img_txt_matching = torch.tensor_split(img_txt_matching, cumm_idx[:-1], dim=1)
-        img_txt_matching = [itm[i] for i, itm in enumerate(img_txt_matching)]
-        return img_txt_matching, text
     
-    def batched_forward_cased_crop(self, image: torch.Tensor, normalize: bool = True, return_ori: bool =False):
+    def batched_forward_tag_crop(self, image: torch.Tensor, normalize: bool = True, return_ori: bool =False):
         """
         :param image: torch.Tensor [B, 3, H, W]
         :param text: list[list[]]
@@ -259,7 +198,7 @@ class TAGWrapper(nn.Module):
         :param return_ori: bool - if True uses the features from the original visual encoder
         """
         low_image = self.create_low_images(image)
-        _, images_vocab_l, dino_logits_l = self.batched_forward_cased(low_image)
+        _, images_vocab_l, dino_logits_l = self.batched_forward_tag(low_image)
         dino_logits = self.fix_dim(dino_logits_l)
         images_vocab = [sum(images_vocab_l[i*4: (i+1)*4], []) for i in range(len(images_vocab_l)//4)]
         return None, images_vocab, dino_logits
